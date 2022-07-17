@@ -1,0 +1,598 @@
+<html>
+<body onload="onNext()">
+<script>
+    const WIDTH = 1600
+    const HEIGHT = 1000
+
+    const SCREEN_ASPECT_RATIO_EXTERNAL = 1.17162
+
+    const SCREEN_INTERNAL_RECT = {
+        x: (1-0.925)/2,
+        y: 0.0388*2.8,
+        w: 0.925,
+        h: 0.7142*0.85,
+    }
+
+    const leftScreen = {
+        x: 0,
+        y: (HEIGHT - WIDTH / (SCREEN_ASPECT_RATIO_EXTERNAL * 6)) / 2,
+        w: WIDTH / 6,
+        h: WIDTH / (SCREEN_ASPECT_RATIO_EXTERNAL * 6),
+    }
+
+    const rightScreen = {
+        ...leftScreen,
+        x: WIDTH-leftScreen.w
+    }
+
+    const SCREEN_BASE_Y = leftScreen.y + leftScreen.h
+
+    const screen = new Image()
+    screen.src = "display.svg"
+
+    const colorBars = new Image()
+    colorBars.src = "colorBars.svg"
+
+    const gear = new Image()
+    gear.src = "gear.svg"
+
+    const catapult = new Image()
+    catapult.src = "catapult.svg"
+
+    function drawContent(ctx, params) {
+        ctx.fillStyle = params.alert ? "red" : "black"
+        ctx.fillRect( params.x, params.y, params.w, params.h )
+
+        if( params.id === undefined ) {
+            ctx.drawImage( colorBars, params.x, params.y, params.w, params.h )
+        } else {
+            ctx.font = "1px serif"
+            const fontSize = params.w / ctx.measureText("888").width
+            ctx.font = `${fontSize}px serif`
+            const measure = ctx.measureText(params.id)
+            ctx.fillStyle = "white"
+            ctx.fillText(params.id,
+                params.x + (params.w - measure.width) / 2,
+                params.y + (params.h - (measure.fontBoundingBoxAscent + measure.fontBoundingBoxDescent)) / 2 + measure.fontBoundingBoxAscent)
+        }
+
+        ctx.strokeStyle = "white"
+        ctx.beginPath()
+        ctx.rect( params.x, params.y, params.w, params.h )
+        ctx.stroke()
+    }
+
+    function drawContentRotated(ctx, params) {
+        const cx = params.cx
+        const cy = params.cy
+        const angle = params.angle
+        const id = params.id
+        const w = params.w
+        const h = params.h
+        const alert = params.alert
+
+        ctx.save()
+
+        ctx.translate(params.cx, params.cy)
+        ctx.rotate(params.angle)
+        drawContent(ctx, {
+            id,
+            x: -w/2,
+            y: -h/2,
+            w,
+            h,
+            alert
+        })
+
+        ctx.restore()
+    }
+
+    function drawScreen(ctx, params) {
+        ctx.drawImage(screen, params.x, params.y, params.w, params.h)
+
+        drawContent(ctx, {
+            x: params.x + params.w * SCREEN_INTERNAL_RECT.x,
+            y: params.y + params.h * SCREEN_INTERNAL_RECT.y,
+            w: params.w * SCREEN_INTERNAL_RECT.w,
+            h: params.h * SCREEN_INTERNAL_RECT.h,
+            id: params.id,
+            alert: params.alert
+        })
+    }
+
+    function drawBelt(ctx, params, drawCtx) {
+        const startX = params.startX
+        const endX = params.endX
+        let y = params.y
+        const speed = params.speed
+        const active = params.active
+        
+        const BELT_RADIUS = 30
+        const DASH_SIZE = 40
+        const DASH_SPACE = 10
+        const SPACE_Y = 5
+
+        y += SPACE_Y
+
+        drawCtx.startTime = drawCtx.startTime || Date.now()
+
+        if( !active && drawCtx.lastTime !== undefined ) {
+            drawCtx.startTime += (Date.now() - drawCtx.lastTime);
+        }
+
+        drawCtx.lastTime = Date.now()
+
+        const delta = (DASH_SIZE + DASH_SPACE) - (((Date.now() - drawCtx.startTime) * speed / 1000) % (DASH_SIZE + DASH_SPACE))
+
+        ctx.save()
+
+        if( delta < DASH_SIZE ) {
+            ctx.setLineDash([DASH_SIZE - delta, DASH_SPACE, delta, 0])
+        } else {
+            ctx.setLineDash([0, DASH_SPACE - (delta-DASH_SIZE), DASH_SIZE, (delta-DASH_SIZE)])
+        }
+
+        const gearCount = Math.trunc((endX - startX) / (2*BELT_RADIUS))
+        const gearStep = gearCount > 1 ? (endX - startX - 2*BELT_RADIUS) / (gearCount-1) : 0;
+
+        const GEAR_SIZE_MULTIPLIER = 0.85
+
+        for( let i = 0; i < gearCount; ++i ) {
+            ctx.save()
+            ctx.translate(startX + i*gearStep + BELT_RADIUS, y+BELT_RADIUS);
+            ctx.rotate(delta * 2 * Math.PI / (DASH_SIZE + DASH_SPACE));
+            ctx.drawImage(
+                gear,
+                -BELT_RADIUS * GEAR_SIZE_MULTIPLIER,
+                -BELT_RADIUS * GEAR_SIZE_MULTIPLIER,
+                2*BELT_RADIUS*GEAR_SIZE_MULTIPLIER,
+                2*BELT_RADIUS*GEAR_SIZE_MULTIPLIER );
+            ctx.restore()
+        }
+        
+
+        ctx.strokeStyle = "black"
+        ctx.lineWidth = 4
+
+        ctx.beginPath()
+        ctx.arc( startX + BELT_RADIUS, y + BELT_RADIUS, BELT_RADIUS, 0.5 * Math.PI, 1.5 * Math.PI )
+        ctx.moveTo( startX + BELT_RADIUS, y )
+        ctx.lineTo( endX - BELT_RADIUS, y )
+        ctx.arc( endX - BELT_RADIUS, y + BELT_RADIUS, BELT_RADIUS, 1.5 * Math.PI, 0.5 * Math.PI )
+        ctx.moveTo( endX - BELT_RADIUS, y + 2 * BELT_RADIUS )
+        ctx.lineTo( startX + BELT_RADIUS, y + 2 * BELT_RADIUS )
+        ctx.stroke()
+
+        ctx.restore()
+    }
+
+    class Intro {
+        next() {
+            return new CatapultAnimation
+        }
+
+        draw(ctx) {
+            drawScreen(ctx, leftScreen)
+            drawScreen(ctx, rightScreen)
+        }
+    }
+
+    class ItemQueue {
+        constructor(params) {
+            this.itemSize = {
+              w: params.itemSize.w,
+              h: params.itemSize.h
+            }
+            this.startX = params.startX
+            this.endX = params.endX
+            this.baseY = params.baseY
+            this.minSpaceX = params.minSpaceX
+
+            this.items = []
+        }
+
+        onItemFinished = (id) => undefined;
+
+        addItem(id) {
+            if( this.items.length !== 0 && this.items[this.items.length-1].x < this.startX + this.items[this.items.length-1].w + this.minSpaceX ) {
+                return false;
+            }
+    
+            this.items.push({
+                id,
+                x: this.startX,
+                y: this.baseY - this.itemSize.h,
+                w: this.itemSize.w,
+                h: this.itemSize.h,
+                stuck: false,
+                blocked: false
+            })
+
+            return true;
+        }
+
+        start(speed) {
+            this.speed = speed
+        }
+
+        stop() {
+            this.speed = 0
+        }
+
+        progress() {
+            const now = Date.now()
+
+            if( this.lastUpdate === undefined ) {
+                this.lastUpdate = now
+                return
+            }
+
+            const moveX = this.speed * (now - this.lastUpdate) / 1000
+            this.lastUpdate = now
+            
+            for( let i = 0; i < this.items.length; ) {
+                const item = this.items[i]
+                const prevItem = this.items[i-1] // may be undefined
+
+                if(item.blocked) {
+                    item.stuck = true;
+                    ++i;
+                    continue;
+                }
+
+                if( prevItem && prevItem.x <= item.x + moveX + item.w + this.minSpaceX ) {
+                    item.stuck = prevItem.stuck;
+                    item.x = prevItem.x - (item.w + this.minSpaceX)
+                    ++i;
+                } else {
+                    item.stuck = false;
+                    item.x += moveX
+                    if( item.x + item.w >= this.endX ) {
+                        this.onItemFinished(item.id)
+                        this.items.shift()
+                    } else {
+                        ++i;
+                    }
+                }
+            }
+        }
+    }
+
+    const BELT_BOX_SIZE = {
+        w: WIDTH / 10,
+        h: (WIDTH / 10) * (9/16)
+    }
+
+    const BELT_SPEED = ( rightScreen.x - (leftScreen.x + leftScreen.w) ) / 3
+
+    class BeltAnimation {
+        constructor() {
+            this.queue = new ItemQueue({
+                itemSize: BELT_BOX_SIZE,
+                startX: leftScreen.x+leftScreen.w,
+                endX: rightScreen.x,
+                baseY: SCREEN_BASE_Y,
+                minSpaceX: 2
+            })
+        }
+
+        next() {
+            if(this.startTime === undefined) {
+                this.startTime = Date.now()
+                this.leftId = -1
+                this.rightId = -1
+                this.queue.start(BELT_SPEED)
+                this.queue.onItemFinished = (id) => {
+                    this.rightId = id
+                    if( this.rightStartTime === undefined ) {
+                        this.rightStartTime = Date.now() - id * 1000
+                    }
+                }
+                return this;
+            }
+            else if( this.queue.items.length > 0 ) {
+                this.queue.items[0].blocked = !this.queue.items[0].blocked;
+                return this;
+            }
+
+            return undefined
+        }
+
+        draw(ctx) {
+            const leftScreenData = {...leftScreen}
+            const rightScreenData = {...rightScreen}
+
+            if( this.startTime !== undefined ) {
+                if( Date.now() > this.startTime + (this.leftId+1) * 1000 ) {
+                    this.leftId++;
+                    this.beltStuck = !this.queue.addItem(this.leftId)
+                }
+
+                leftScreenData.id = this.leftId
+                rightScreenData.id = this.rightId >= 0 ? this.rightId : undefined
+
+                if( this.rightStartTime !== undefined && Date.now() > this.rightStartTime + (this.rightId + 1) * 1000 + 100 /*100ms reserve*/ ) {
+                    rightScreenData.alert = true;
+                }
+            }
+
+            this.queue.progress()
+
+            this.beltDrawCtx = this.beltDrawCtx || {}
+            drawBelt(ctx, {
+                startX: leftScreen.x+leftScreen.w,
+                endX: rightScreen.x,
+                y: SCREEN_BASE_Y,
+                speed: BELT_SPEED,
+                active: !this.beltStuck
+            }, this.beltDrawCtx)
+
+            drawScreen(ctx, leftScreenData)
+            drawScreen(ctx, rightScreenData)
+
+            for( const item of this.queue.items ) {
+                drawContent(ctx, {...item, alert: item.stuck})
+            }
+        }
+    }
+
+    const CATAPULT_BOX_SIZE = BELT_BOX_SIZE
+    const CATAPULT_TARGET_DELIVERY_TIME = 1
+    const CATAPULT_WIND_SPEED_INITIAL = (rightScreen.x - (leftScreen.x + leftScreen.w)) * 0.2 / CATAPULT_TARGET_DELIVERY_TIME
+    const CATAPULT_WIND_SPEED_DELTA = CATAPULT_WIND_SPEED_INITIAL * 4
+
+    class CatapultAnimation {
+        constructor() {
+            this.items = []
+        }
+        
+        next() {
+            if( this.startTime === undefined ) {
+                this.startTime = Date.now();
+                this.leftId = -1
+                return this
+            }
+            else if( this.windSpeed === undefined ) {
+                this.windSpeed = CATAPULT_WIND_SPEED_INITIAL
+                this.lastWindChange = Date.now()
+            } else {
+                this.windSpeed = undefined
+            }
+
+            return this
+        }
+
+        drawCatapult(ctx, params) {
+            const cx = params.cx
+            const cy = params.cy
+            const lw = params.lw
+            const angle = params.angle
+
+            ctx.save()
+
+            ctx.translate(cx, cy)
+            ctx.scale(lw / 480, lw / 480)
+            ctx.translate(-650, -630)
+
+            ctx.strokeStyle = "white"
+            ctx.fillStyle = "black"
+
+            ctx.lineWidth = 10
+
+
+            {
+                ctx.save()
+                ctx.translate(490, 680)
+                ctx.rotate(230/180 * Math.PI)
+                ctx.beginPath()
+                ctx.rect( -15, -15, 30, 320 );
+                ctx.stroke()
+                ctx.fill()
+                ctx.restore()
+            }
+
+            {
+                ctx.save()
+
+                ctx.translate(690, 680)
+                ctx.rotate(angle)
+                ctx.beginPath()
+                ctx.rect( -20, -20, -500, 40 );
+                ctx.stroke()
+                ctx.fill()
+
+                ctx.beginPath()
+                ctx.arc( -520, -40, 80, 0, Math.PI )
+                ctx.fill()
+                ctx.stroke()
+
+                ctx.restore()
+            }
+
+            ctx.beginPath()
+            ctx.rect( 700, 340, 780-700, 650-340 );
+            ctx.fill()
+            ctx.stroke()
+
+            ctx.beginPath()
+            ctx.rect( 280, 640, 810-280, 720-640 );
+            ctx.fill()
+            ctx.stroke()
+
+            ctx.beginPath()
+            ctx.arc( 740, 720, 45, 0, 2 * Math.PI );
+            ctx.fill()
+            ctx.stroke()
+
+            ctx.beginPath()
+            ctx.arc( 350, 720, 45, 0, 2 * Math.PI );
+            ctx.fill()
+            ctx.stroke()
+
+            ctx.restore()
+        }
+
+        draw(ctx) {
+            const now = Date.now()
+
+            const leftScreenData = {...leftScreen}
+            const rightScreenData = {...rightScreen}
+
+            if( this.startTime !== undefined && now >= this.startTime + this.leftId * 1000 ) {
+                this.leftId++;
+
+                const maxY = SCREEN_BASE_Y - 2 * CATAPULT_BOX_SIZE.h
+                const g = 2 * maxY / (CATAPULT_TARGET_DELIVERY_TIME * CATAPULT_TARGET_DELIVERY_TIME / 4)
+
+                const sx = (rightScreen.x - (leftScreen.x+leftScreen.w) - CATAPULT_BOX_SIZE.w) / CATAPULT_TARGET_DELIVERY_TIME
+                const sy = -g * CATAPULT_TARGET_DELIVERY_TIME / 2
+
+                const angleSpeed = Math.PI * 2
+
+                this.items.push({
+                    id: this.leftId,
+                    x: leftScreen.x+leftScreen.w + CATAPULT_BOX_SIZE.w/2,
+                    y: SCREEN_BASE_Y - CATAPULT_BOX_SIZE.h/2,
+                    angle: 0,
+                    sx,
+                    sy,
+                    g,
+                    angleSpeed,
+                    missed: false,
+                    lastUpdate: now
+                })
+
+                this.catapultCtx = this.ctapultCtx || {}
+                this.catapultCtx.angle = 0
+                this.catapultCtx.speed = angleSpeed
+                this.catapultCtx.lastUpdate = now
+            }
+
+            if( this.windSpeed !== undefined ) {
+                this.windSpeed += (Math.random() * 2 - 1) * CATAPULT_WIND_SPEED_DELTA * (now - this.lastWindChange) / 1000
+                if( this.windSpeed < 0 ) {
+                    this.windSpeed = 0
+                }
+                this.lastWindChange = now
+            }
+
+            for( let i = 0; i < this.items.length; ) {
+                const item = this.items[i]
+                const t = (now - item.lastUpdate) / 1000
+                item.x = item.x + (item.sx - (this.windSpeed||0)) * t;
+                item.y = item.y + item.sy * t + item.g * t * t / 2
+                item.sy = item.sy + item.g * t
+                item.angle += item.angleSpeed * t
+                item.lastUpdate = now
+
+                if( item.y > SCREEN_BASE_Y - CATAPULT_BOX_SIZE.h / 2 ) {
+                    if( !item.missed && item.x >= rightScreen.x - CATAPULT_BOX_SIZE.w * 1.5 ) {
+                        this.rightId = item.id
+
+                        if( this.rightStartTime === undefined ) {
+                            this.rightStartTime = Date.now() - item.id * 1000
+                        }
+                    } else {
+                        item.missed = true;
+                    }
+                    
+                    if( item.x >= rightScreen.x - CATAPULT_BOX_SIZE.w || !item.missed ) {
+                        this.items.shift()
+                        continue
+                    }
+                }
+
+                drawContentRotated(ctx, {...item,
+                   cx: item.x,
+                   cy: item.y,
+                   angle: item.angle,
+                   w: CATAPULT_BOX_SIZE.w,
+                   h: CATAPULT_BOX_SIZE.h,
+                   alert: item.missed })
+                ++i
+            }
+
+            //ctx.drawImage(catapult, leftScreen.x+leftScreen.w + 100, SCREEN_BASE_Y - 65, 200, 200)
+
+            this.beltDrawCtx = this.beltDrawCtx || {}
+            drawBelt(ctx, {
+                startX: rightScreen.x - CATAPULT_BOX_SIZE.w,
+                endX: rightScreen.x,
+                y: SCREEN_BASE_Y,
+                speed: 0,
+                active: false
+            }, this.beltDrawCtx )
+
+            if( this.leftId >= 0 ) {
+                leftScreenData.id = this.leftId
+            }
+
+            if( this.rightId >= 0 ) {
+                rightScreenData.id = this.rightId
+
+                if( this.rightStartTime !== undefined && Date.now() > this.rightStartTime + this.rightId * 1000 + 100 /*100ms reserve*/ ) {
+                    rightScreenData.alert = true;
+                }
+
+            }
+    
+            drawScreen(ctx, leftScreenData)
+            drawScreen(ctx, rightScreenData)
+
+            if(this.catapultCtx) {
+                this.catapultCtx.angle += this.catapultCtx.speed * (now - this.catapultCtx.lastUpdate) / 1000
+                this.catapultCtx.lastUpdate = now
+
+                if(this.catapultCtx.speed > 0 && this.catapultCtx.angle >= Math.PI / 4 ) {
+                    this.catapultCtx.angle = Math.PI / 4
+                    this.catapultCtx.speed = -this.catapultCtx.speed
+                } else if( this.catapultCtx.speed < 0 && this.catapultCtx.angle <= 0 ) {
+                    this.catapultCtx.angle = 0
+                    this.catapultCtx.speed = 0
+                }
+            }
+
+            this.drawCatapult(ctx, {
+                cx: leftScreen.x + leftScreen.w + CATAPULT_BOX_SIZE.w * 5/4,
+                cy: SCREEN_BASE_Y,
+                lw: CATAPULT_BOX_SIZE.w * 3/4,
+                angle: this.catapultCtx?.angle || 0
+            });
+        }
+    }
+
+    let animation
+
+    function animate() {
+        if( !animation ) {
+            return;
+        }
+
+        const canvas = document.getElementById("canvas")
+        canvas.width = WIDTH
+        canvas.height = HEIGHT
+        const ctx = canvas.getContext("2d")
+
+        ctx.fillStyle = "#eeeeee"
+        ctx.fillRect( 0, 0, WIDTH, HEIGHT )
+
+        animation.draw(ctx, ctx.width, ctx.height)
+
+        requestAnimationFrame(animate)
+    }
+
+    function onNext() {
+        if( !animation ) {
+            animation = new CatapultAnimation;
+
+            animate();
+        } else {
+            animation = animation.next()
+        }
+    }
+
+</script>
+<canvas id="canvas" style="width: 100%; height: auto"></canvas>
+<button autofocus onclick="onNext()">Next</button>
+</body>
+</html>

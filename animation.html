@@ -36,9 +36,6 @@
     const gear = new Image()
     gear.src = "gear.svg"
 
-    const catapult = new Image()
-    catapult.src = "catapult.svg"
-
     function drawContent(ctx, params) {
         ctx.fillStyle = params.alert ? "red" : "black"
         ctx.fillRect( params.x, params.y, params.w, params.h )
@@ -161,6 +158,76 @@
         ctx.arc( endX - BELT_RADIUS, y + BELT_RADIUS, BELT_RADIUS, 1.5 * Math.PI, 0.5 * Math.PI )
         ctx.moveTo( endX - BELT_RADIUS, y + 2 * BELT_RADIUS )
         ctx.lineTo( startX + BELT_RADIUS, y + 2 * BELT_RADIUS )
+        ctx.stroke()
+
+        ctx.restore()
+    }
+
+    function drawCatapult(ctx, params) {
+        const cx = params.cx
+        const cy = params.cy
+        const lw = params.lw
+        const angle = params.angle
+
+        ctx.save()
+
+        ctx.translate(cx, cy)
+        ctx.scale(lw / 480, lw / 480)
+        ctx.translate(-650, -630)
+
+        ctx.strokeStyle = "white"
+        ctx.fillStyle = "black"
+
+        ctx.lineWidth = 10
+
+
+        {
+            ctx.save()
+            ctx.translate(490, 680)
+            ctx.rotate(230/180 * Math.PI)
+            ctx.beginPath()
+            ctx.rect( -15, -15, 30, 320 );
+            ctx.stroke()
+            ctx.fill()
+            ctx.restore()
+        }
+
+        {
+            ctx.save()
+
+            ctx.translate(690, 680)
+            ctx.rotate(angle)
+            ctx.beginPath()
+            ctx.rect( -20, -20, -500, 40 );
+            ctx.stroke()
+            ctx.fill()
+
+            ctx.beginPath()
+            ctx.arc( -520, -40, 80, 0, Math.PI )
+            ctx.fill()
+            ctx.stroke()
+
+            ctx.restore()
+        }
+
+        ctx.beginPath()
+        ctx.rect( 700, 340, 780-700, 650-340 );
+        ctx.fill()
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.rect( 280, 640, 810-280, 720-640 );
+        ctx.fill()
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.arc( 740, 720, 45, 0, 2 * Math.PI );
+        ctx.fill()
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.arc( 350, 720, 45, 0, 2 * Math.PI );
+        ctx.fill()
         ctx.stroke()
 
         ctx.restore()
@@ -362,75 +429,7 @@
             return this
         }
 
-        drawCatapult(ctx, params) {
-            const cx = params.cx
-            const cy = params.cy
-            const lw = params.lw
-            const angle = params.angle
-
-            ctx.save()
-
-            ctx.translate(cx, cy)
-            ctx.scale(lw / 480, lw / 480)
-            ctx.translate(-650, -630)
-
-            ctx.strokeStyle = "white"
-            ctx.fillStyle = "black"
-
-            ctx.lineWidth = 10
-
-
-            {
-                ctx.save()
-                ctx.translate(490, 680)
-                ctx.rotate(230/180 * Math.PI)
-                ctx.beginPath()
-                ctx.rect( -15, -15, 30, 320 );
-                ctx.stroke()
-                ctx.fill()
-                ctx.restore()
-            }
-
-            {
-                ctx.save()
-
-                ctx.translate(690, 680)
-                ctx.rotate(angle)
-                ctx.beginPath()
-                ctx.rect( -20, -20, -500, 40 );
-                ctx.stroke()
-                ctx.fill()
-
-                ctx.beginPath()
-                ctx.arc( -520, -40, 80, 0, Math.PI )
-                ctx.fill()
-                ctx.stroke()
-
-                ctx.restore()
-            }
-
-            ctx.beginPath()
-            ctx.rect( 700, 340, 780-700, 650-340 );
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.rect( 280, 640, 810-280, 720-640 );
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.arc( 740, 720, 45, 0, 2 * Math.PI );
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.arc( 350, 720, 45, 0, 2 * Math.PI );
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.restore()
-        }
+        
 
         draw(ctx) {
             const now = Date.now()
@@ -512,8 +511,6 @@
                 ++i
             }
 
-            //ctx.drawImage(catapult, leftScreen.x+leftScreen.w + 100, SCREEN_BASE_Y - 65, 200, 200)
-
             this.beltDrawCtx = this.beltDrawCtx || {}
             drawBelt(ctx, {
                 startX: rightScreen.x - CATAPULT_BOX_SIZE.w,
@@ -552,7 +549,7 @@
                 }
             }
 
-            this.drawCatapult(ctx, {
+            drawCatapult(ctx, {
                 cx: leftScreen.x + leftScreen.w + CATAPULT_BOX_SIZE.w * 5/4,
                 cy: SCREEN_BASE_Y,
                 lw: CATAPULT_BOX_SIZE.w * 3/4,

@@ -36,7 +36,15 @@
     const gear = new Image()
     gear.src = "gear.svg"
 
+    const truck = new Image()
+    truck.src = "truck.svg"
+
+    const vimeo = new Image()
+    vimeo.src = "vimeo.svg"
+
     function drawContent(ctx, params) {
+        ctx.save()
+        ctx.lineWidth = 1 / ctx.getTransform().a
         ctx.fillStyle = params.alert ? "red" : "black"
         ctx.fillRect( params.x, params.y, params.w, params.h )
 
@@ -44,7 +52,7 @@
             ctx.drawImage( colorBars, params.x, params.y, params.w, params.h )
         } else {
             ctx.font = "1px serif"
-            const fontSize = params.w / ctx.measureText("888").width
+            const fontSize = params.w / Math.max( ctx.measureText("888").width, ctx.measureText(params.id).width )
             ctx.font = `${fontSize}px serif`
             const measure = ctx.measureText(params.id)
             ctx.fillStyle = "white"
@@ -57,6 +65,7 @@
         ctx.beginPath()
         ctx.rect( params.x, params.y, params.w, params.h )
         ctx.stroke()
+        ctx.restore()
     }
 
     function drawContentRotated(ctx, params) {
@@ -233,6 +242,119 @@
         ctx.restore()
     }
 
+    const TRUCK_ASPECT = 1.8916
+
+    function drawTruck(ctx, params) {
+        const { x, y, w, h, id, alert, mirror } = params
+
+        const BODY = {
+            x: 0.1114,
+            y: 0.2965,
+            w: 0.7772,
+            h: 0.4108 
+        }
+
+        const SCREEN = {
+            x: 0.2971,
+            y: 0,
+            w: 0.7009,
+            h: 0.6842
+        }
+
+        const SCREEN_SIZE_NORMALIZED = {
+            w: WIDTH / 10,
+            h: (WIDTH / 10) / 1.938
+        }
+
+
+        ctx.save()
+
+        ctx.translate( x + w/2, y + h/2 )
+        ctx.scale( mirror ? w : -w, h )
+
+        ctx.drawImage(truck, -0.5 - BODY.x / BODY.w, -0.5 - BODY.y / BODY.h, 1 / BODY.w, 1 / BODY.h)
+
+        ctx.translate( SCREEN.x - 0.5 + SCREEN.w / 2, SCREEN.y - 0.5 + SCREEN.h / 2 )
+        ctx.scale( SCREEN.w * (!mirror ? -1 : 1) / SCREEN_SIZE_NORMALIZED.w, SCREEN.h / SCREEN_SIZE_NORMALIZED.h )
+
+        // ctx.fillStyle = "rgba(0,255,0,0.5)"
+        // ctx.fillRect(-SCREEN_SIZE_NORMALIZED.w / 2, -SCREEN_SIZE_NORMALIZED.h / 2, SCREEN_SIZE_NORMALIZED.w, SCREEN_SIZE_NORMALIZED.h)
+
+        if( id !== undefined ) {
+            drawContent(ctx, {
+                x: -SCREEN_SIZE_NORMALIZED.w / 2,
+                y: -SCREEN_SIZE_NORMALIZED.h / 2,
+                w: SCREEN_SIZE_NORMALIZED.w,
+                h: SCREEN_SIZE_NORMALIZED.h,
+                id,
+                alert
+            })
+        } else {
+            // vimeo icon is square
+            const MULT = 0.7
+            ctx.drawImage(vimeo, -SCREEN_SIZE_NORMALIZED.h / 2 * MULT, -SCREEN_SIZE_NORMALIZED.h / 2 * MULT, SCREEN_SIZE_NORMALIZED.h * MULT, SCREEN_SIZE_NORMALIZED.h * MULT)
+        }
+
+        ctx.restore()
+
+    }
+
+    class ImageSequence {
+        // ffmpeg -i file.gif -vsync 0 prefix_%d.png
+        constructor(params) {
+            const prefix = params.prefix
+            const count = params.count
+            const ext = params.ext || "png"
+            this.aspect = params.aspect
+
+            this.images = []
+            for( let i = 1; i <= count; ++i ) {
+                const img = new Image()
+                img.src = `${prefix}${i}.${ext}`
+                this.images.push(img)
+            }
+        }
+
+        start(fps) {
+            const obj = {
+                lastUpdate: Date.now(),
+                aspect: this.aspect,
+                index: 0,
+                fps
+            }
+
+            obj.update = () => {
+                const now = Date.now()
+
+                if(obj.fps) {
+                    obj.index += (now - obj.lastUpdate) * obj.fps / 1000
+                }
+
+                while(obj.index < 0) {
+                    obj.index += this.images.length
+                }
+
+                obj.index = obj.index % this.images.length
+                obj.lastUpdate = now
+            }
+
+            obj.draw = (ctx, params) => {
+                obj.update()
+
+                ctx.drawImage( this.images[Math.trunc(obj.index)], params.x, params.y, params.w, params.h )
+            }
+
+            return obj;
+        }
+    }
+
+    const bird1 = new ImageSequence({
+        prefix: "bird1/bird_",
+        count: 26,
+        extension: "png",
+        aspect: 198/189 })
+
+
     class Intro {
         next() {
             return new CatapultAnimation
@@ -408,6 +530,14 @@
     const CATAPULT_WIND_SPEED_INITIAL = (rightScreen.x - (leftScreen.x + leftScreen.w)) * 0.2 / CATAPULT_TARGET_DELIVERY_TIME
     const CATAPULT_WIND_SPEED_DELTA = CATAPULT_WIND_SPEED_INITIAL * 4
 
+    const CATAPULT_BIRD_H = HEIGHT / 8
+    const CATAPULT_BIRD_Y = {
+        min: 0,
+        max: CATAPULT_BIRD_H + HEIGHT / 4
+    }
+    const CATAPULT_BIRD_SPEED = WIDTH / 1.5
+
+
     class CatapultAnimation {
         constructor() {
             this.items = []
@@ -419,14 +549,18 @@
                 this.leftId = -1
                 return this
             }
-            else if( this.windSpeed === undefined ) {
+            else if( this.windSpeed === undefined && this.allowBird === undefined ) {
                 this.windSpeed = CATAPULT_WIND_SPEED_INITIAL
                 this.lastWindChange = Date.now()
-            } else {
+                return this
+            } else if( this.allowBird === undefined ) {
                 this.windSpeed = undefined
+                this.allowBird = true;
+                return this
+            } else {
+                return undefined
             }
 
-            return this
         }
 
         
@@ -475,14 +609,86 @@
                 this.lastWindChange = now
             }
 
+            if( !this.bird && this.allowBird ) {
+                const obj = bird1;
+
+                const size = {
+                    w: CATAPULT_BIRD_H * obj.aspect,
+                    h: CATAPULT_BIRD_H,
+                }
+
+                this.bird = {
+                    obj: bird1.start(15),
+                    ...size,
+                    x: WIDTH - size.w,
+                    y: CATAPULT_BIRD_Y.min + Math.random() * (CATAPULT_BIRD_Y.max - CATAPULT_BIRD_Y.min - size.h),
+                    lastUpdate: now
+                }
+            }
+
+            if( this.bird ) {
+                if( this.bird.blockFor >= 0 ) {
+                    this.bird.blockFor -= (now - this.bird.lastUpdate ) / 1000
+                    this.bird.lastUpdate = now
+                    
+                    if( this.bird.blockFor < 0 ) {
+                        this.bird = undefined
+                    }
+                } else {
+                    this.bird.x -= CATAPULT_BIRD_SPEED * (now - this.bird.lastUpdate ) / 1000
+                    this.bird.lastUpdate = now
+                    
+                    if( this.bird.x < 0 ) {
+                        this.bird = undefined
+                    }
+                }
+            }
+
             for( let i = 0; i < this.items.length; ) {
                 const item = this.items[i]
-                const t = (now - item.lastUpdate) / 1000
-                item.x = item.x + (item.sx - (this.windSpeed||0)) * t;
-                item.y = item.y + item.sy * t + item.g * t * t / 2
-                item.sy = item.sy + item.g * t
-                item.angle += item.angleSpeed * t
-                item.lastUpdate = now
+
+                if(item.blockFor >= 0) {
+                    item.blockFor -= (now - item.lastUpdate) / 1000
+                    item.lastUpdate = now
+
+                    if( item.blockFor >= 0 ) {
+                        ++i
+                    } else {
+                        this.items.splice(i, 1)
+                    }
+
+                } else {
+                    const t = (now - item.lastUpdate) / 1000
+                    item.x = item.x + (item.sx - (this.windSpeed||0)) * t;
+                    item.y = item.y + item.sy * t + item.g * t * t / 2
+                    item.sy = item.sy + item.g * t
+                    item.angle += item.angleSpeed * t
+                    item.lastUpdate = now
+
+                    if(this.bird) {
+                        const bird = {
+                            cx: this.bird.x + this.bird.w / 2,
+                            cy: this.bird.y + this.bird.h / 2,
+                            r: Math.min(this.bird.w, this.bird.h)
+                        }
+
+                        const r = Math.min(CATAPULT_BOX_SIZE.w, CATAPULT_BOX_SIZE.h)
+
+                        const dist2 = (item.x - bird.cx) * (item.x - bird.cx) + (item.y - bird.cy) * (item.y - bird.cy)
+                        const r2 =  r * r
+
+                        if( dist2 <= r2 ) {
+                            if( this.bird.blockFor === undefined ) {
+                                this.bird.blockFor = 0.5
+                                this.bird.obj.fps = 60
+                            }
+                            item.missed = true
+                            item.blockFor = 0.5
+                        }
+                    }
+
+                }
+
 
                 if( item.y > SCREEN_BASE_Y - CATAPULT_BOX_SIZE.h / 2 ) {
                     if( !item.missed && item.x >= rightScreen.x - CATAPULT_BOX_SIZE.w * 1.5 ) {
@@ -555,6 +761,216 @@
                 lw: CATAPULT_BOX_SIZE.w * 3/4,
                 angle: this.catapultCtx?.angle || 0
             });
+
+            if( this.bird ) {
+                this.bird.obj.draw(ctx, {
+                    ...this.bird,
+                    obj: undefined,
+                })
+            }
+            
+        }
+    }
+
+    const CARGO_BOX_SIZE = BELT_BOX_SIZE
+    const CARGO_LANE_COUNT = 4
+
+    const CARGO_TRUCK_SIZE = {
+        h: CARGO_BOX_SIZE.h,
+        w: CARGO_BOX_SIZE.h * TRUCK_ASPECT };
+
+    const CARGO_LANE_OFFSET = HEIGHT / 20
+
+    const CARGO_LANE_SPEED = WIDTH / 10
+
+
+    const CARGO_STACK_OFFSET = 5
+    const CARGO_STACK_BORDER = 2
+    const CARGO_STACK_MIN_ITEMS = 4
+
+    const CARGO_STACK_W = CARGO_BOX_SIZE.w + 2 * CARGO_STACK_OFFSET + 4 * CARGO_STACK_BORDER
+
+    class Stack {
+        constructor(x) {
+            this.x = x
+            this.items = []
+        }
+
+        add(id, freezeFor) {
+            this.items.push({id, freezeBefore: Date.now() + (freezeFor||0)*1000})
+        }
+
+        empty() {
+            return this.getIndexToTake() === -1
+        }
+
+        getIndexToTake() {
+            const now = Date.now()
+            let minIndex = -1
+            for( let i = 0; i < this.items.length; ++i ) {
+                if( this.items[i].freezeBefore > now ) {
+                    continue;
+                }
+
+                if( minIndex === -1 || this.items[i].id < this.items[minIndex].id ) {
+                    minIndex = i
+                }
+            }
+
+            return minIndex
+        }
+
+
+        take() {
+            const minIndex = this.getIndexToTake()
+            if( minIndex === -1 ) {
+                return
+            }
+
+            const res = this.items[minIndex].id
+            this.items.splice(minIndex, 1)
+            return res
+        }
+
+        draw(ctx) {
+            ctx.save()
+
+            ctx.lineWidth = CARGO_STACK_BORDER
+            ctx.strokeStyle = "black"
+
+            ctx.beginPath()
+
+            for( let i = 0; i < Math.max( CARGO_STACK_MIN_ITEMS, this.items.length ); ++i ) {
+                const x = this.x + CARGO_STACK_OFFSET + CARGO_STACK_BORDER/2
+                const y = SCREEN_BASE_Y - i * (4*CARGO_STACK_BORDER+CARGO_BOX_SIZE.h) - (2 * CARGO_STACK_BORDER+CARGO_BOX_SIZE.h) - CARGO_STACK_BORDER/2
+                const w = CARGO_STACK_BORDER * 3 + CARGO_BOX_SIZE.w
+                const h = CARGO_STACK_BORDER * 2 + CARGO_BOX_SIZE.h
+
+                ctx.moveTo( x, y )
+                ctx.lineTo( x, y + h )
+                ctx.lineTo( x + w, y + h )
+                ctx.lineTo( x + w, y )
+            }
+
+            ctx.stroke()
+
+            ctx.restore()
+
+            let y = SCREEN_BASE_Y - CARGO_BOX_SIZE.h - 2 * CARGO_STACK_BORDER
+
+            for( const item of this.items ) {
+                drawContent(ctx, {
+                    id: item.id,
+                    x: this.x + CARGO_STACK_OFFSET + 2 * CARGO_STACK_BORDER,
+                    y,
+                    w: CARGO_BOX_SIZE.w,
+                    h: CARGO_BOX_SIZE.h
+                })
+
+                y -= CARGO_BOX_SIZE.h + 4 * CARGO_STACK_BORDER
+            }
+        }
+    }
+
+    class CargoExpressAnimation {
+        constructor() {
+            this.leftStack = new Stack(leftScreen.x+leftScreen.w)
+            this.rightStack = new Stack(rightScreen.x - CARGO_STACK_W)
+            this.lanes = []
+
+            for( let i = 0; i < CARGO_LANE_COUNT; ++i ) {
+                const lane = new ItemQueue( {
+                    itemSize: CARGO_TRUCK_SIZE,
+                    startX: leftScreen.x+leftScreen.w+CARGO_STACK_W,
+                    endX: rightScreen.x - CARGO_STACK_W,
+                    baseY: SCREEN_BASE_Y - i * (CARGO_TRUCK_SIZE.h+CARGO_LANE_OFFSET),
+                    minSpaceX: 2
+                });
+                lane.onItemFinished = (id) => {
+                    this.rightStack.add(id)
+                }
+                lane.start(CARGO_LANE_SPEED)
+                this.lanes.push( lane )
+            }
+        }
+
+        next() {
+            if( this.startTime === undefined ) {
+                this.startTime = Date.now();
+                this.leftId = -1
+                return this
+            }
+
+        }
+
+        draw(ctx) {
+            const now = Date.now()
+
+            const leftScreenData = {...leftScreen}
+            const rightScreenData = {...rightScreen}
+
+            if( this.startTime !== undefined && now >= this.startTime + (this.leftId+1) * 1000 ) {
+                this.leftId++;
+                this.leftStack.add(this.leftId, 0.5)
+            }
+
+            if(this.leftId !== undefined) {
+                leftScreenData.id = this.leftId;
+            }
+
+            while( !this.leftStack.empty() ) {
+                const laneIndex = this.lanes.findIndex((v) => v.items.length === 0);
+                if( laneIndex < 0 ) {
+                    break
+                }
+
+                this.lanes[laneIndex].addItem(this.leftStack.take())
+            }
+
+            for( const lane of this.lanes ) {
+                lane.progress()
+            }
+
+
+            this.leftStack.draw(ctx)
+            this.rightStack.draw(ctx)
+
+            for( const lane of this.lanes ) {
+
+                {
+                    ctx.save()
+                    ctx.fillStyle = "#aaaaaa"
+                    ctx.fillRect( lane.startX, lane.baseY, lane.endX - lane.startX, CARGO_LANE_OFFSET * 1/2 )
+                    ctx.strokeStyle = "black"
+                    ctx.lineWidth = 3
+                    ctx.beginPath()
+                    ctx.moveTo(lane.startX + 3 / 2, lane.baseY + 3 / 2)
+                    ctx.lineTo(lane.endX - 3 / 2, lane.baseY + 3 / 2)
+                    ctx.stroke()
+                    ctx.restore()
+                }
+
+                if( lane.items.length > 0 ) {
+                    for( const item of lane.items ) {
+                        drawTruck(ctx, {
+                            ...item,
+                            alert: item.stuck,
+                            mirror: false
+                        })
+                    }
+                } else {
+                    drawTruck(ctx, {
+                        x: lane.startX,
+                        y: lane.baseY - CARGO_TRUCK_SIZE.h,
+                        w: CARGO_TRUCK_SIZE.w,
+                        h: CARGO_TRUCK_SIZE.h,
+                        id: undefined
+                    })
+                }
+            }
+
+            drawScreen(ctx, leftScreenData)
+            drawScreen(ctx, rightScreenData)
         }
     }
 
@@ -580,7 +996,7 @@
 
     function onNext() {
         if( !animation ) {
-            animation = new CatapultAnimation;
+            animation = new CargoExpressAnimation;
 
             animate();
         } else {

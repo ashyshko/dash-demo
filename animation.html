@@ -42,6 +42,9 @@
     const vimeo = new Image()
     vimeo.src = "vimeo.svg"
 
+    const stop = new Image()
+    stop.src = "stop.svg"
+
     function drawContent(ctx, params) {
         ctx.save()
         ctx.lineWidth = 1 / ctx.getTransform().a
@@ -781,12 +784,14 @@
 
     const CARGO_LANE_OFFSET = HEIGHT / 20
 
-    const CARGO_LANE_SPEED = WIDTH / 10
+    const CARGO_TRUCK_SPEED = WIDTH / 3
 
 
     const CARGO_STACK_OFFSET = 5
     const CARGO_STACK_BORDER = 2
     const CARGO_STACK_MIN_ITEMS = 4
+
+    const CARGO_STOP_SIGN_SIZE = HEIGHT / 15
 
     const CARGO_STACK_W = CARGO_BOX_SIZE.w + 2 * CARGO_STACK_OFFSET + 4 * CARGO_STACK_BORDER
 
@@ -820,6 +825,14 @@
             return minIndex
         }
 
+        get() {
+            const minIndex = this.getIndexToTake()
+            if( minIndex === -1 ) {
+                return
+            }
+
+            return this.items[minIndex].id
+        }
 
         take() {
             const minIndex = this.getIndexToTake()
@@ -887,9 +900,23 @@
                     minSpaceX: 2
                 });
                 lane.onItemFinished = (id) => {
-                    this.rightStack.add(id)
+                    if( id !== undefined ) {
+                        if( !lane.reverse ) {
+                            this.rightStack.add(id)
+                            if( this.rightStartTime === undefined ) {
+                                this.rightStartTime = Date.now() - (id * 1000) + 3000
+                            }
+                            lane.reverse = true;
+                            lane.addItem(undefined)
+                        } else {
+                            lane.reverse = false
+                            this.leftStack.add(id, 0.5)
+                        }
+                    } else {
+                        lane.reverse = false;
+                    }
                 }
-                lane.start(CARGO_LANE_SPEED)
+                lane.start(CARGO_TRUCK_SPEED)
                 this.lanes.push( lane )
             }
         }
@@ -898,6 +925,26 @@
             if( this.startTime === undefined ) {
                 this.startTime = Date.now();
                 this.leftId = -1
+                return this
+            } else {
+                for( const lane of this.lanes ) {
+                    if( !lane.blocked ) {
+                        lane.blocked = true
+
+                        if( !lane.reverse ){
+                            for( const item of lane.items ) {
+                                item.x =  (lane.endX - CARGO_TRUCK_SIZE.w  - lane.startX) - (item.x - lane.startX) + lane.startX
+                            }
+                            lane.reverse = true;
+                        }
+
+                        return this
+                    }
+                }
+
+                for( const lane of this.lanes ) {
+                    lane.blocked = false;
+                }
                 return this
             }
 
@@ -918,13 +965,54 @@
                 leftScreenData.id = this.leftId;
             }
 
+            if( this.rightStartTime !== undefined ) {
+                while( true ) {
+                    const id = this.rightStack.get()
+                    if( id === undefined ) {
+                        break;
+                    }
+
+                    if( now < this.rightStartTime + id * 1000 ) {
+                        break;
+                    }
+
+                    if( now > this.rightStartTime + id * 1000 + 500 ) {
+                        this.rightStack.take()
+                        continue;
+                    }
+
+                    this.rightId = id
+                    this.rightStack.take()
+                }
+            }
+
+            rightScreenData.id = this.rightId
+
+            if( this.rightId !== undefined ) {
+                if( now > this.rightStartTime + this.rightId * 1000 + 3000 ) {
+                    rightScreenData.id = undefined
+                } else if( now > this.rightStartTime + this.rightId * 1000 + 1100 ) {
+                    rightScreenData.alert = true
+                }
+            }
+
             while( !this.leftStack.empty() ) {
-                const laneIndex = this.lanes.findIndex((v) => v.items.length === 0);
+                let laneIndex = -1
+                this.nextTruckIndex = this.nextTruckIndex || 0
+                for( let i = 0; i < this.lanes.length; ++i ) {
+                    const index = (i + this.nextTruckIndex) % this.lanes.length
+                    if( this.lanes[index].items.length === 0 && !this.lanes[index].blocked ) {
+                        laneIndex = index;
+                        break;
+                    }
+                }
                 if( laneIndex < 0 ) {
                     break
                 }
 
                 this.lanes[laneIndex].addItem(this.leftStack.take())
+                this.lanes[laneIndex].reverse = false;
+                this.nextTruckIndex = laneIndex + 1
             }
 
             for( const lane of this.lanes ) {
@@ -950,15 +1038,22 @@
                     ctx.restore()
                 }
 
+                if( lane.blocked ) {
+                    ctx.drawImage( stop, lane.endX - CARGO_STOP_SIGN_SIZE, lane.baseY - (CARGO_TRUCK_SIZE.h - CARGO_STOP_SIGN_SIZE)/2 - CARGO_STOP_SIGN_SIZE, CARGO_STOP_SIGN_SIZE, CARGO_STOP_SIGN_SIZE )
+                }
+
                 if( lane.items.length > 0 ) {
                     for( const item of lane.items ) {
-                        drawTruck(ctx, {
-                            ...item,
+                        const params = {...item,
                             alert: item.stuck,
-                            mirror: false
-                        })
+                            mirror: false };
+                        if(lane.reverse) {
+                            params.x = lane.endX - CARGO_TRUCK_SIZE.w + lane.startX - params.x
+                            params.mirror = true;
+                        }
+                        drawTruck(ctx, params)
                     }
-                } else {
+                } else if( !lane.blocked ) {
                     drawTruck(ctx, {
                         x: lane.startX,
                         y: lane.baseY - CARGO_TRUCK_SIZE.h,

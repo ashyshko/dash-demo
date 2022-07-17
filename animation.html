@@ -1,8 +1,21 @@
 <html>
-<body onload="onNext()">
+<head>
+<style>
+    #overlay h1 {
+        text-align: center;
+    }
+
+    #overlay li {
+        font-size: 24px;
+        line-height: 150%;
+    }
+
+</style>
+</head>
+<body onload="init()">
 <script>
     const WIDTH = 1600
-    const HEIGHT = 1000
+    const HEIGHT = 800
 
     const SCREEN_ASPECT_RATIO_EXTERNAL = 1.17162
 
@@ -15,7 +28,7 @@
 
     const leftScreen = {
         x: 0,
-        y: (HEIGHT - WIDTH / (SCREEN_ASPECT_RATIO_EXTERNAL * 6)) / 2,
+        y: (HEIGHT - WIDTH / (SCREEN_ASPECT_RATIO_EXTERNAL * 6)) / 2 + 100,
         w: WIDTH / 6,
         h: WIDTH / (SCREEN_ASPECT_RATIO_EXTERNAL * 6),
     }
@@ -45,9 +58,12 @@
     const stop = new Image()
     stop.src = "stop.svg"
 
+    const windSign = new Image()
+    windSign.src = "wind_sign.svg"
+
     function drawContent(ctx, params) {
         ctx.save()
-        ctx.lineWidth = 1 / ctx.getTransform().a
+        ctx.lineWidth = 1
         ctx.fillStyle = params.alert ? "red" : "black"
         ctx.fillRect( params.x, params.y, params.w, params.h )
 
@@ -359,13 +375,16 @@
 
 
     class Intro {
+        constructor(ids) {
+            this.ids = ids
+        }
+
         next() {
-            return new CatapultAnimation
         }
 
         draw(ctx) {
-            drawScreen(ctx, leftScreen)
-            drawScreen(ctx, rightScreen)
+            drawScreen(ctx, {...leftScreen, id: this.ids?.[0]})
+            drawScreen(ctx, {...rightScreen, id: this.ids?.[1]})
         }
     }
 
@@ -480,14 +499,10 @@
                         this.rightStartTime = Date.now() - id * 1000
                     }
                 }
-                return this;
             }
             else if( this.queue.items.length > 0 ) {
                 this.queue.items[0].blocked = !this.queue.items[0].blocked;
-                return this;
             }
-
-            return undefined
         }
 
         draw(ctx) {
@@ -503,8 +518,12 @@
                 leftScreenData.id = this.leftId
                 rightScreenData.id = this.rightId >= 0 ? this.rightId : undefined
 
-                if( this.rightStartTime !== undefined && Date.now() > this.rightStartTime + (this.rightId + 1) * 1000 + 100 /*100ms reserve*/ ) {
-                    rightScreenData.alert = true;
+                if( this.rightStartTime !== undefined ) {
+                    if( Date.now() > this.rightStartTime + (this.rightId + 1) * 1000 + 3000 ) {
+                        rightScreenData.id = undefined;
+                    } else if( Date.now() > this.rightStartTime + (this.rightId + 1) * 1000 + 100 /*100ms reserve*/ ) {
+                        rightScreenData.alert = true;
+                    }
                 }
             }
 
@@ -516,7 +535,7 @@
                 endX: rightScreen.x,
                 y: SCREEN_BASE_Y,
                 speed: BELT_SPEED,
-                active: !this.beltStuck
+                active: !this.beltStuck && this.startTime !== undefined
             }, this.beltDrawCtx)
 
             drawScreen(ctx, leftScreenData)
@@ -550,29 +569,28 @@
             if( this.startTime === undefined ) {
                 this.startTime = Date.now();
                 this.leftId = -1
-                return this
             }
             else if( this.windSpeed === undefined && this.allowBird === undefined ) {
                 this.windSpeed = CATAPULT_WIND_SPEED_INITIAL
                 this.lastWindChange = Date.now()
-                return this
             } else if( this.allowBird === undefined ) {
                 this.windSpeed = undefined
                 this.allowBird = true;
-                return this
             } else {
-                return undefined
+                this.windSpeed = undefined
+                this.allowBird = undefined
             }
-
         }
-
-        
 
         draw(ctx) {
             const now = Date.now()
 
             const leftScreenData = {...leftScreen}
             const rightScreenData = {...rightScreen}
+
+            if( this.windSpeed !== undefined ) {
+                ctx.drawImage( windSign, WIDTH * 9/10 - 10, 10, WIDTH / 10, WIDTH * (280/320) / 10  )
+            }
 
             if( this.startTime !== undefined && now >= this.startTime + this.leftId * 1000 ) {
                 this.leftId++;
@@ -736,8 +754,12 @@
             if( this.rightId >= 0 ) {
                 rightScreenData.id = this.rightId
 
-                if( this.rightStartTime !== undefined && Date.now() > this.rightStartTime + this.rightId * 1000 + 100 /*100ms reserve*/ ) {
-                    rightScreenData.alert = true;
+                if( this.rightStartTime !== undefined ) {
+                    if( Date.now() > this.rightStartTime + this.rightId * 1000 + 3000 ) {
+                        rightScreenData.id = undefined
+                    } else if( Date.now() > this.rightStartTime + this.rightId * 1000 + 100 /*100ms reserve*/ ) {
+                        rightScreenData.alert = true;
+                    }
                 }
 
             }
@@ -1089,18 +1111,134 @@
         requestAnimationFrame(animate)
     }
 
-    function onNext() {
-        if( !animation ) {
-            animation = new CargoExpressAnimation;
+    const cargoObj = {
+        name: "Live MPEG-DASH",
+        create: () => new CargoExpressAnimation,
+        next: undefined 
+    }
 
-            animate();
-        } else {
-            animation = animation.next()
+    const dashIntroObj = {
+        name: "Live MPEG-DASH Intro",
+        create: () => new Intro(["A", "B"]),
+        next: cargoObj,
+        html: `
+            <h1>MPEG-DASH</h1>
+            <ul>
+                <li>Stream chunked to small HTTP requests</li>
+                <li>High latency</li>
+            </ul>
+
+        `
+    }
+
+    const catapultObj = {
+        name: "SRT/RIST/Zixi",
+        create: () => new CatapultAnimation,
+        next: dashIntroObj
+    }
+
+    const srtIntroObj = {
+        name: "SRT/RIST/Zixi Intro",
+        create: () => new Intro(["A", "B"]),
+        next: catapultObj,
+        html: `
+            <h1>SRT/RIST/Zixi</h1>
+            <ul>
+                <li>Designer for Low Latency streaming</li>
+                <li>UDP protocol + error correction</li>
+            </ul>
+        `
+    }
+
+    const beltObj = {
+        name: "RTMP",
+        create: () => new BeltAnimation,
+        next: srtIntroObj
+    }
+
+    const rtmpIntroObj = {
+        name: "RTMP Intro",
+        create: () => new Intro(["A", "B"]),
+        next: beltObj,
+        html: `
+            <h1>RTMP</h1>
+            <ul>
+                <li>Industry standard for live streaming</li>
+                <li>Single TCP connection</li>
+            </ul>
+        `
+    }
+
+    const introObj = {
+        name: "Intro",
+        create: () => new Intro(["A", "B"]),
+        next: rtmpIntroObj,
+        html: `
+            <h1>Live Video Delivery Protocols</h1>
+            <ul>
+                <li>RTMP</li>
+                <li>SRT/RIST/Zixi</li>
+                <li>MPEG-DASH</li>
+            </ul>`
+    }
+
+    let animationObj
+
+    function onNextScene() {
+        animation.next()
+    }
+
+    function onNextAnimation() {
+        if( animationObj ) {
+            animationObj = animationObj.next
         }
+
+        if( !animationObj ) {
+            animationObj = introObj
+        }
+
+        animation = animationObj.create()
+        
+        if( animationObj.next ) {
+            document.getElementById("next_animation").innerHTML = `Next to ${animationObj.next.name}`
+        } else {
+            document.getElementById("next_animation").innerHTML = "Finish"
+        }
+
+        if(animationObj.html) {
+            document.getElementById("overlay").innerHTML = animationObj.html;
+            document.getElementById("overlay_container").style.display = "flex"
+        } else {
+            document.getElementById("overlay_container").style.display = "none"
+        }
+
+        document.getElementById("next_scene").focus()
+    }
+
+    function init() {
+        onNextAnimation()
+        animate()
+        const changeSize = () => {
+            const canvas = document.getElementById("canvas")
+            const rect = canvas.getBoundingClientRect()
+            const overlay = document.getElementById("overlay_container")
+            const scale = rect.width / WIDTH
+            overlay.style.left = rect.left + leftScreen.w * scale
+            overlay.style.width = rect.right - rightScreen.w * scale - (rect.left + leftScreen.w * scale)
+            overlay.style.top = rect.top
+            overlay.style.height = rect.bottom - rect.top
+        }
+        new ResizeObserver(changeSize).observe(document.getElementById("canvas"))
+        changeSize()
     }
 
 </script>
-<canvas id="canvas" style="width: 100%; height: auto"></canvas>
-<button autofocus onclick="onNext()">Next</button>
+<canvas id="canvas" style="width: 100%; height: auto; position: relative">
+</canvas>
+<div id="overlay_container" style="position: absolute; display: flex; align-items: center; justify-content: center;">
+    <div id="overlay"></div>
+</div>
+<button id="next_scene" autofocus onclick="onNextScene()">Next scene</button>
+<button id="next_animation" onclick="onNextAnimation()">Next</button>
 </body>
 </html>

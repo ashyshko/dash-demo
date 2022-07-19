@@ -549,8 +549,8 @@
 
     const CATAPULT_BOX_SIZE = BELT_BOX_SIZE
     const CATAPULT_TARGET_DELIVERY_TIME = 1
-    const CATAPULT_WIND_SPEED_INITIAL = (rightScreen.x - (leftScreen.x + leftScreen.w)) * 0.2 / CATAPULT_TARGET_DELIVERY_TIME
-    const CATAPULT_WIND_SPEED_DELTA = CATAPULT_WIND_SPEED_INITIAL * 4
+    const CATAPULT_WIND_SPEED_INITIAL = (rightScreen.x - (leftScreen.x + leftScreen.w)) * 0.3 / CATAPULT_TARGET_DELIVERY_TIME
+    const CATAPULT_WIND_SPEED_DELTA = CATAPULT_WIND_SPEED_INITIAL
 
     const CATAPULT_BIRD_H = HEIGHT / 8
     const CATAPULT_BIRD_Y = {
@@ -630,7 +630,14 @@
                 this.lastWindChange = now
             }
 
-            if( !this.bird && this.allowBird ) {
+            if( this.noBird ) {
+                this.noBird.timeout -= (now - this.noBird.lastUpdate) / 1000
+                this.noBird.lastUpdate = now
+
+                if( this.noBird.timeout <= 0 ) {
+                    this.noBird = undefined
+                }
+            } else if( !this.bird && this.allowBird ) {
                 const obj = bird1;
 
                 const size = {
@@ -654,6 +661,10 @@
                     
                     if( this.bird.blockFor < 0 ) {
                         this.bird = undefined
+                        this.noBird = {
+                            timeout: 1 + Math.random() * 0.5,
+                            lastUpdate: now
+                        }
                     }
                 } else {
                     this.bird.x -= CATAPULT_BIRD_SPEED * (now - this.bird.lastUpdate ) / 1000
@@ -661,6 +672,10 @@
                     
                     if( this.bird.x < 0 ) {
                         this.bird = undefined
+                        this.noBird = {
+                            timeout: 1 + Math.random() * 0.5,
+                            lastUpdate: now
+                        }
                     }
                 }
             }
@@ -704,6 +719,7 @@
                                 this.bird.obj.fps = 60
                             }
                             item.missed = true
+                            item.blinking = true
                             item.blockFor = 0.5
                         }
                     }
@@ -728,13 +744,15 @@
                     }
                 }
 
-                drawContentRotated(ctx, {...item,
-                   cx: item.x,
-                   cy: item.y,
-                   angle: item.angle,
-                   w: CATAPULT_BOX_SIZE.w,
-                   h: CATAPULT_BOX_SIZE.h,
-                   alert: item.missed })
+                if( !item.blinking || (now/1000) % 0.1 < 0.05) {
+                    drawContentRotated(ctx, {...item,
+                       cx: item.x,
+                       cy: item.y,
+                       angle: item.angle,
+                       w: CATAPULT_BOX_SIZE.w,
+                       h: CATAPULT_BOX_SIZE.h,
+                       alert: item.missed })
+               }
                 ++i
             }
 
@@ -1110,11 +1128,20 @@
 
         requestAnimationFrame(animate)
     }
+    
+    const outroObj = {
+        name: "Outro",
+        create: () => new Intro,
+        next: undefined,
+        html: `
+            <img src="bird1/bird.gif"></img>
+        `
+    }
 
     const cargoObj = {
         name: "Live MPEG-DASH",
         create: () => new CargoExpressAnimation,
-        next: undefined 
+        next: outroObj 
     }
 
     const dashIntroObj = {

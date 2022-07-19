@@ -1109,6 +1109,87 @@
         }
     }
 
+    class IronTriangle {
+        constructor() {
+            this.step = 0
+        }
+        
+        next() {
+            this.step = (this.step + 1 ) % 4
+        }
+
+        draw(ctx) {
+            ctx.save()
+
+            ctx.translate( WIDTH / 2, SCREEN_BASE_Y );
+            ctx.scale( (SCREEN_BASE_Y - HEIGHT / 10) / Math.sqrt(3), (SCREEN_BASE_Y - HEIGHT / 10) / Math.sqrt(3) )
+
+            ctx.lineWidth = 64 / WIDTH
+
+            const colors = ["#f79544", "#6fc2ee", "#904a81"]
+            for( let i = 0; i < 3; ++i ) {
+                ctx.save()
+                ctx.translate(0, -Math.sqrt(3)/3)
+                ctx.rotate( i * 2 * Math.PI / 3 )
+                ctx.translate(0, Math.sqrt(3)/3)
+                ctx.fillStyle = colors[i]
+                ctx.strokeStyle = "white"
+                ctx.beginPath()
+                ctx.moveTo(1, 0)
+                ctx.lineTo(0, 0)
+                ctx.lineTo(0, -Math.sqrt(3)/3)
+                ctx.lineTo(1/2, -Math.sqrt(3)/2)
+                ctx.lineTo(1,0)
+                ctx.fill()
+                ctx.stroke()
+                ctx.restore()
+            }
+
+            const drawText = (x,y,text) => {
+                ctx.font = `${200 / WIDTH}px monospace`
+                const m = ctx.measureText(text)
+                //ctx.lineWidth = 16 / WIDTH
+                ctx.fillStyle = "white"
+                ctx.fillText( text, x - m.width / 2, y )
+            }
+
+            const drawBaloon = (x,y,text, color) => {
+                ctx.font = `${350 / WIDTH}px monospace`
+                const m = ctx.measureText(text)
+                //ctx.lineWidth = 16 / WIDTH
+                ctx.fillStyle = color
+                ctx.beginPath()
+                ctx.ellipse(x,y,0.4/*m.width/2 * 2*/,0.3 /*(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)/2 * 3*/,0,0,Math.PI * 3)
+                ctx.fill()
+
+                ctx.fillStyle = "white"
+                ctx.fillText( text, x - m.width / 2, y + (m.fontBoundingBoxAscent - m.fontBoundingBoxDescent)/2 )
+                
+            }
+
+            drawText( 0.4, -0.25, "Stability" )
+            drawText( 0., -1.0, "Latency" )
+            drawText( -0.4, -0.25, "Quality" )
+
+            if(this.step >= 1 ) {
+                drawBaloon( 0, -1.5, "SRT", "rgba(255,0,0,80%)")
+            }
+
+            if(this.step >= 2) {
+                drawBaloon( 0, -0.75, "RTMP", "rgba(255,215,0,80%)")
+            }
+
+            if(this.step >= 3) {
+                drawBaloon( 0, 0, "DASH", "rgba(0,127,0,80%)")
+            }
+
+            ctx.restore()
+
+            drawScreen(ctx, leftScreen)
+            drawScreen(ctx, rightScreen)
+        }
+    }
+
     let animation
 
     function animate() {
@@ -1138,10 +1219,41 @@
         `
     }
 
+    const benefitsObj = {
+        name: "Benefits",
+        create: () => new Intro(),
+        next: outroObj,
+        html: `
+            <h1>Our Benefits</h1>
+            <ul>
+                <li>Simpler infrastructure</li>
+                <li>Using Google HTTP LoadBalancer</li>
+                <li>Full control of pipeline</li>
+                <li>Distributed transcoder opportunity</li>
+            </ul>
+        `
+    }
+
+    const transmitterObj = {
+        name: "Transmitter service",
+        create: () => new Intro(),
+        next: benefitsObj,
+        html: `
+            <h1>RTMP-to-DASH Transmitter Service</h1>
+            <img width=${WIDTH / 3} src="14std.jpeg"></img>
+        `
+    }
+
+    const ironTriangleObj = {
+        name: "Iron Triangle",
+        create: () => new IronTriangle,
+        next: transmitterObj
+    }
+
     const cargoObj = {
         name: "Live MPEG-DASH",
         create: () => new CargoExpressAnimation,
-        next: outroObj 
+        next: ironTriangleObj 
     }
 
     const dashIntroObj = {
@@ -1196,8 +1308,8 @@
         `
     }
 
-    const introObj = {
-        name: "Intro",
+    const protocolsObj = {
+        name: "Protocols",
         create: () => new Intro(["A", "B"]),
         next: rtmpIntroObj,
         html: `
@@ -1206,6 +1318,18 @@
                 <li>RTMP</li>
                 <li>SRT/RIST/Zixi</li>
                 <li>MPEG-DASH</li>
+            </ul>`
+    }
+
+
+    const introObj = {
+        name: "Intro",
+        create: () => new Intro(),
+        next: protocolsObj,
+        html: `
+            <h1>Reliable Live</h1>
+            <ul>
+                <li>Support MPEG-DASH Protocol for Live Video Ingestion</li>
             </ul>`
     }
 
